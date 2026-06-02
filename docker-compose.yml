@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ethara_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ethara_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ethara_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ethara_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ethara_user} -d ${POSTGRES_DB:-ethara_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ethara_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ethara_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ethara_user}:${POSTGRES_PASSWORD:-ethara_pass}@db:5432/${POSTGRES_DB:-ethara_db}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80,http://frontend}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ethara_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: ethara_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - ethara_net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ethara_net:
+    driver: bridge
